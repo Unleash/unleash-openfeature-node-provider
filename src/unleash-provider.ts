@@ -50,13 +50,13 @@ export class UnleashProvider implements Provider {
       return;
     }
     if (!this.client) {
-        this.client = new Unleash({ ...this.config!, disableAutoStart: true });
+        this.client = new Unleash({ ...this.config, disableAutoStart: true });
     }
 
-    this.client?.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
-    this.client?.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
-    this.client?.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
-    this.client?.on(UnleashEvents.Changed, () => {
+    this.client.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
+    this.client.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
+    this.client.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
+    this.client.on(UnleashEvents.Changed, () => {
       this.onUnleashSuccess();
       this.events.emit(ProviderEvents.ConfigurationChanged, { message: 'Flag configuration changed' });
     });
