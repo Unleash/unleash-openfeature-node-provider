@@ -1,7 +1,20 @@
-import { ErrorCode, OpenFeature, ProviderEvents, StandardResolutionReasons } from '@openfeature/server-sdk';
-import { InMemStorageProvider, PayloadType, UnleashEvents, type UnleashConfig } from 'unleash-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { UnleashProvider } from '../src/unleash-provider';
+import { EventEmitter } from 'node:events';
+import {
+  ErrorCode,
+  OpenFeature,
+  ProviderEvents,
+  ProviderFatalError,
+  StandardResolutionReasons,
+} from '@openfeature/server-sdk';
+import {
+  InMemStorageProvider,
+  PayloadType,
+  Unleash,
+  UnleashEvents,
+  type UnleashConfig,
+} from 'unleash-client';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { UnleashProvider, type UnleashProviderConfig } from '../src/unleash-provider';
 
 type BootstrapFeatures = NonNullable<NonNullable<UnleashConfig['bootstrap']>['data']>;
 
@@ -182,5 +195,193 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
     });
     provider.unleashClient?.emit(UnleashEvents.Unchanged);
     await seen;
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Minimal fake Unleash client for initialization edge-case tests.
+// Extends EventEmitter so on/emit/once work identically to the real client.
+// ---------------------------------------------------------------------------
+
+class FakeUnleash extends EventEmitter {
+  private _synchronized = false;
+
+  isSynchronized(): boolean {
+    return this._synchronized;
+  }
+
+  /**
+   * Set the synchronized flag and schedule a Synchronized event via setImmediate.
+   * setImmediate fires after all pending microtasks and nextTick callbacks, which
+   * matches the timing of the real Unleash client (where Synchronized fires via
+   * process.nextTick only after an internal storageProvider.set() await drains).
+   * This ensures initialize()'s once(Synchronized) listener is registered before
+   * the event fires.
+   */
+  markSynchronized(): void {
+    this._synchronized = true;
+    setImmediate(() => this.emit(UnleashEvents.Synchronized));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async start(): Promise<void> {}
+
+  async destroyWithFlush(): Promise<void> {}
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  getFeatureToggleDefinition(_name: string): undefined {
+    return undefined;
+  }
+}
+
+const minimalConfig: UnleashProviderConfig = {
+  appName: 'init-test',
+  url: 'http://localhost:9/api',
+  refreshInterval: 0,
+  disableMetrics: true,
+  storageProvider: new InMemStorageProvider(),
+  skipInstanceCountWarning: true,
+};
+
+/** Provider subclass that injects a FakeUnleash instead of constructing a real one. */
+class TestableProvider extends UnleashProvider {
+  constructor(
+    private readonly fakeClient: FakeUnleash,
+    config: UnleashProviderConfig = minimalConfig,
+  ) {
+    super(config);
+  }
+
+  protected override createUnleashClient(): Unleash {
+    return this.fakeClient as unknown as Unleash;
+  }
+}
+
+describe('UnleashProvider — initialization edge cases', () => {
+  afterEach(async () => {
+    await OpenFeature.close();
+  });
+
+  it('resolves as soon as bootstrap data is present (isSynchronized immediately after start)', async () => {
+    // offlineConfig supplies bootstrap; the real Unleash client sets synchronized
+    // synchronously during loadBootstrap(), so isSynchronized() is true after start().
+    const provider = new UnleashProvider({
+      ...offlineConfig,
+      appName: 'bootstrap-test',
+      storageProvider: new InMemStorageProvider(),
+    });
+    await expect(provider.initialize()).resolves.toBeUndefined();
+    expect(provider.unleashClient?.isSynchronized()).toBe(true);
+    await provider.onClose();
+  });
+
+  it('does not reject on a transient error during start; resolves once Synchronized fires', async () => {
+    const fakeClient = new FakeUnleash();
+    fakeClient.start = async () => {
+      // Emit a transient (non-fatal) error — isSynchronized() remains false.
+      fakeClient.emit(UnleashEvents.Error, new Error('ECONNREFUSED'));
+    };
+
+    const provider = new TestableProvider(fakeClient);
+    const initPromise = provider.initialize();
+
+    // Yield so initialize() advances past start() and reaches once(Synchronized).
+    await Promise.resolve();
+
+    // Simulate a later successful fetch.
+    fakeClient.markSynchronized();
+    fakeClient.emit(UnleashEvents.Synchronized);
+
+    await expect(initPromise).resolves.toBeUndefined();
+  });
+
+  it('emits STALE (not ERROR) on error after data is present, then READY on recovery', async () => {
+    const fakeClient = new FakeUnleash();
+    fakeClient.start = async () => {
+      fakeClient.markSynchronized();
+    };
+
+    const provider = new TestableProvider(fakeClient);
+    await provider.initialize();
+
+    // Now data exists — an error should emit Stale, not Error.
+    const stalePromise = new Promise<void>((resolve) => {
+      provider.events.addHandler(ProviderEvents.Stale, () => resolve());
+    });
+    fakeClient.emit(UnleashEvents.Error, new Error('temporary network error'));
+    await stalePromise;
+
+    // Recovery via Unchanged should emit Ready.
+    const readyPromise = new Promise<void>((resolve) => {
+      provider.events.addHandler(ProviderEvents.Ready, () => resolve());
+    });
+    fakeClient.emit(UnleashEvents.Unchanged);
+    await readyPromise;
+  });
+
+  it('rejects with PROVIDER_FATAL on a fatal authentication error (401/403)', async () => {
+    const fakeClient = new FakeUnleash();
+    fakeClient.start = async () => {
+      // Exact message format emitted by the Unleash polling-fetcher on 401/403.
+      fakeClient.emit(
+        UnleashEvents.Error,
+        new Error(
+          'http://localhost:9/api responded 401 which means your API key is not allowed to connect. Stopping refresh of toggles',
+        ),
+      );
+      // isSynchronized() remains false — no data was fetched.
+    };
+
+    const provider = new TestableProvider(fakeClient);
+    await expect(provider.initialize()).rejects.toThrow(ProviderFatalError);
+  });
+
+  it('rejects with PROVIDER_FATAL when initializationTimeoutMs is exceeded', async () => {
+    // No bootstrap, refreshInterval 0 → fetch() is a no-op → never synchronizes.
+    const provider = new UnleashProvider({
+      ...minimalConfig,
+      initializationTimeoutMs: 50,
+    });
+
+    await expect(provider.initialize()).rejects.toThrow(ProviderFatalError);
+    await provider.onClose();
+  });
+
+  it('returns PROVIDER_NOT_READY when evaluated before initialization completes', async () => {
+    const fakeClient = new FakeUnleash();
+    let resolveStart!: () => void;
+    // start() hangs until the test manually releases it.
+    fakeClient.start = () => new Promise<void>((resolve) => { resolveStart = resolve; });
+
+    const provider = new TestableProvider(fakeClient);
+
+    // Non-awaited — provider status stays NOT_READY.
+    void OpenFeature.setProvider('not-ready-scope', provider);
+    const ofClient = OpenFeature.getClient('not-ready-scope');
+
+    const details = await ofClient.getBooleanDetails('bool-flag', false);
+    expect(details.errorCode).toBe(ErrorCode.PROVIDER_NOT_READY);
+
+    // Let initialization complete so the process can exit cleanly.
+    fakeClient.markSynchronized();
+    resolveStart();
+    fakeClient.emit(UnleashEvents.Synchronized);
+  });
+
+  it('does not emit PROVIDER_READY from the provider itself during initial initialization', async () => {
+    const fakeClient = new FakeUnleash();
+    fakeClient.start = async () => {
+      fakeClient.markSynchronized();
+    };
+
+    const provider = new TestableProvider(fakeClient);
+    let providerReadyCount = 0;
+    provider.events.addHandler(ProviderEvents.Ready, () => { providerReadyCount++; });
+
+    await provider.initialize();
+    // Drain any queued microtasks / nextTick callbacks.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(providerReadyCount).toBe(0);
   });
 });
