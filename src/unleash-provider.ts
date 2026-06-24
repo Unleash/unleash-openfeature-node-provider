@@ -4,6 +4,8 @@ import {
   GeneralError,
   OpenFeatureEventEmitter,
   ProviderEvents,
+  ProviderFatalError,
+  ProviderNotReadyError,
   StandardResolutionReasons,
   type EvaluationContext,
   type JsonValue,
@@ -15,29 +17,28 @@ import { Unleash, UnleashEvents, type UnleashConfig } from 'unleash-client';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
-/**
- * OpenFeature provider backed by the Unleash Node.js SDK.
- *
- * The provider constructs and owns the Unleash client: the client is created and
- * started in `initialize()` and destroyed (with a metrics flush) in `onClose()`.
- */
+export type UnleashProviderConfig = UnleashConfig & {
+  initializationTimeoutMs?: number;
+};
+
+const FATAL_AUTH_PATTERN = /not allowed to connect/i;
+
 export class UnleashProvider implements Provider {
   readonly metadata = { name: 'unleash' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
-  private readonly config: UnleashConfig;
+  private readonly config: UnleashProviderConfig;
   private client?: Unleash;
-  /** The repository holds flag data (from a fetch, bootstrap, or backup file). */
   private hasData = false;
-  /** A Stale/Error event has been emitted and not yet followed by Ready. */
   private degraded = false;
+  private fatalAuthError = false;
 
-  constructor(config: UnleashConfig) {
+  constructor(config: UnleashProviderConfig) {
     this.config = config;
   }
 
-  set unleashClient(client:  Unleash) {
+  set unleashClient(client: Unleash) {
     this.client = client;
   }
 
@@ -46,42 +47,57 @@ export class UnleashProvider implements Provider {
   }
 
   async initialize(): Promise<void> {
-    if (this.client) {
-      return;
-    }
     if (!this.client) {
-        this.client = new Unleash({ ...this.config, disableAutoStart: true });
+        this.client = this.createUnleashClient();
     }
 
-    this.client.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
-    this.client.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
-    this.client.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
-    this.client.on(UnleashEvents.Changed, () => {
+    this.setupListeners(this.client);
+    await this.client.start();
+
+    if (this.client.isSynchronized()) return;
+    if (this.fatalAuthError) {
+      throw new ProviderFatalError('Unleash authentication failed — check your API key');
+    }
+
+    await this.awaitSynchronized(this.client);
+  }
+
+  private async awaitSynchronized(client: Unleash): Promise<void> {
+    const syncPromise = once(client, UnleashEvents.Synchronized);
+    const { initializationTimeoutMs } = this.config;
+
+    if (initializationTimeoutMs === undefined) {
+      await syncPromise;
+      return;
+    }
+
+    let handle!: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      handle = setTimeout(
+        () =>
+          reject(
+            new ProviderFatalError(
+              `Unleash did not synchronize within ${initializationTimeoutMs}ms`,
+            ),
+          ),
+        initializationTimeoutMs,
+      );
+    });
+    try {
+      await Promise.race([syncPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(handle);
+    }
+  }
+
+  setupListeners(client: Unleash): void {
+    client.on(UnleashEvents.Error, (error: unknown) => this.onUnleashError(error));
+    client.on(UnleashEvents.Synchronized, () => this.onUnleashSuccess());
+    client.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
+    client.on(UnleashEvents.Changed, () => {
       this.onUnleashSuccess();
       this.events.emit(ProviderEvents.ConfigurationChanged, { message: 'Flag configuration changed' });
     });
-
-    // Both events are emitted on a later tick than the one where start() resolves,
-    // and the client refuses to evaluate flags until its internal ready flag is set,
-    // so wait for the events rather than for start() alone. Unlike startUnleash(),
-    // don't wait forever: reject on the first error so setProviderAndWait() cannot
-    // hang. The client keeps polling, so a later successful fetch emits Ready and
-    // recovers the provider.
-    const abort = new AbortController();
-    const started = Promise.all([
-      once(this.client, UnleashEvents.Ready, { signal: abort.signal }),
-      once(this.client, UnleashEvents.Synchronized, { signal: abort.signal }),
-    ]);
-    const failed = once(this.client, UnleashEvents.Error, { signal: abort.signal }).then(([error]) =>
-      Promise.reject(toError(error)),
-    );
-    try {
-      await this.client.start();
-      await Promise.race([started, failed]);
-    } finally {
-      abort.abort();
-    }
-    this.hasData = true;
   }
 
   async onClose(): Promise<void> {
@@ -102,8 +118,7 @@ export class UnleashProvider implements Provider {
     const client = this.requireClient(flagKey);
     const enabled = client.isEnabled(flagKey, translateContext(context, logger));
     return {
-      value: enabled,
-      reason: enabled ? StandardResolutionReasons.TARGETING_MATCH : StandardResolutionReasons.DISABLED,
+      value: enabled
     };
   }
 
@@ -146,14 +161,12 @@ export class UnleashProvider implements Provider {
     return resolveVariantValue(variant, expectedType, defaultValue);
   }
 
-  /**
-   * Returns the client, enforcing FLAG_NOT_FOUND semantics: Unleash itself treats
-   * unknown flags as disabled, but OpenFeature callers should be able to tell
-   * "missing" apart from "off".
-   */
   private requireClient(flagKey: string): Unleash {
     if (!this.client) {
       throw new GeneralError('Unleash provider is not initialized');
+    }
+    if (!this.client.isSynchronized()) {
+      throw new ProviderNotReadyError('Unleash provider has not yet synchronized flag data');
     }
     if (this.client.getFeatureToggleDefinition(flagKey) === undefined) {
       throw new FlagNotFoundError(`Flag '${flagKey}' was not found in Unleash`);
@@ -161,12 +174,20 @@ export class UnleashProvider implements Provider {
     return this.client;
   }
 
+  /** Overridable seam for testing — returns a fully configured Unleash client. */
+  protected createUnleashClient(): Unleash {
+    return new Unleash({ ...this.config, disableAutoStart: true });
+  }
+
   private onUnleashError(error: unknown): void {
+    const err = toError(error);
+    if (FATAL_AUTH_PATTERN.test(err.message)) {
+      this.fatalAuthError = true;
+      return;
+    }
     this.degraded = true;
-    const message = toError(error).message;
+    const message = err.message;
     if (this.hasData) {
-      // Cached flags are still served while the client retries, so the provider
-      // is stale rather than down.
       this.events.emit(ProviderEvents.Stale, { message });
     } else {
       this.events.emit(ProviderEvents.Error, { message });
