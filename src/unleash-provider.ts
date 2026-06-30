@@ -24,7 +24,7 @@ export type UnleashProviderConfig = UnleashConfig & {
 const FATAL_AUTH_PATTERN = /not allowed to connect/i;
 
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash' } as const;
+  readonly metadata = { name: 'unleash-node-provider' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
