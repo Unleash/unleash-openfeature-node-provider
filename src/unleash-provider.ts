@@ -4,7 +4,6 @@ import {
   GeneralError,
   OpenFeatureEventEmitter,
   ProviderEvents,
-  ProviderFatalError,
   ProviderNotReadyError,
   StandardResolutionReasons,
   type EvaluationContext,
@@ -21,8 +20,6 @@ export type UnleashProviderConfig = UnleashConfig & {
   initializationTimeoutMs?: number;
 };
 
-const FATAL_AUTH_PATTERN = /not allowed to connect/i;
-
 export class UnleashProvider implements Provider {
   readonly metadata = { name: 'unleash-node-provider' } as const;
   readonly runsOn = 'server' as const;
@@ -32,62 +29,16 @@ export class UnleashProvider implements Provider {
   private client?: Unleash;
   private hasData = false;
   private degraded = false;
-  private fatalAuthError = false;
 
   constructor(config: UnleashProviderConfig) {
     this.config = config;
   }
 
-  set unleashClient(client: Unleash) {
-    this.client = client;
-  }
-
-  get unleashClient(): Unleash | undefined {
-    return this.client;
-  }
-
   async initialize(): Promise<void> {
-    if (!this.client) {
-        this.client = this.createUnleashClient();
-    }
+    this.client = this.createUnleashClient();
 
     this.setupListeners(this.client);
     await this.client.start();
-
-    if (this.client.isSynchronized()) return;
-    if (this.fatalAuthError) {
-      throw new ProviderFatalError('Unleash authentication failed — check your API key');
-    }
-
-    await this.awaitSynchronized(this.client);
-  }
-
-  private async awaitSynchronized(client: Unleash): Promise<void> {
-    const syncPromise = once(client, UnleashEvents.Synchronized);
-    const { initializationTimeoutMs } = this.config;
-
-    if (initializationTimeoutMs === undefined) {
-      await syncPromise;
-      return;
-    }
-
-    let handle!: ReturnType<typeof setTimeout>;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      handle = setTimeout(
-        () =>
-          reject(
-            new ProviderFatalError(
-              `Unleash did not synchronize within ${initializationTimeoutMs}ms`,
-            ),
-          ),
-        initializationTimeoutMs,
-      );
-    });
-    try {
-      await Promise.race([syncPromise, timeoutPromise]);
-    } finally {
-      clearTimeout(handle);
-    }
   }
 
   setupListeners(client: Unleash): void {
@@ -111,14 +62,15 @@ export class UnleashProvider implements Provider {
 
   async resolveBooleanEvaluation(
     flagKey: string,
-    _defaultValue: boolean,
+    defaultValue: boolean,
     context: EvaluationContext,
     logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
     const client = this.requireClient(flagKey);
-    const enabled = client.isEnabled(flagKey, translateContext(context, logger));
+    const enabled = client.isEnabled(flagKey, translateContext(context, logger), () => defaultValue);
     return {
-      value: enabled
+      value: enabled,
+      reason: enabled ? StandardResolutionReasons.UNKNOWN : StandardResolutionReasons.DISABLED
     };
   }
 
@@ -174,17 +126,12 @@ export class UnleashProvider implements Provider {
     return this.client;
   }
 
-  /** Overridable seam for testing — returns a fully configured Unleash client. */
   protected createUnleashClient(): Unleash {
     return new Unleash({ ...this.config, disableAutoStart: true });
   }
 
   private onUnleashError(error: unknown): void {
     const err = toError(error);
-    if (FATAL_AUTH_PATTERN.test(err.message)) {
-      this.fatalAuthError = true;
-      return;
-    }
     this.degraded = true;
     const message = err.message;
     if (this.hasData) {
@@ -195,8 +142,9 @@ export class UnleashProvider implements Provider {
   }
 
   private onUnleashSuccess(): void {
+    const hadData = this.hasData;
     this.hasData = true;
-    if (this.degraded) {
+    if (this.degraded || !hadData) {
       this.degraded = false;
       this.events.emit(ProviderEvents.Ready, { message: 'Unleash client recovered' });
     }
