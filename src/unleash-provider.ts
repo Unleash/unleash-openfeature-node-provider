@@ -69,7 +69,7 @@ export class UnleashProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    const client = this.requireClient(flagKey);
+    const client = this.requireClient();
     const enabled = client.isEnabled(flagKey, translateContext(context, logger));
     return {
       value: enabled
