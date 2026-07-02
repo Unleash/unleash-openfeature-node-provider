@@ -74,7 +74,7 @@ export class UnleashProvider implements Provider {
     const enabled = client.isEnabled(flagKey, translateContext(context, logger), () => defaultValue);
     return {
       value: enabled,
-      reason: enabled ? StandardResolutionReasons.UNKNOWN : StandardResolutionReasons.DISABLED
+      reason: StandardResolutionReasons.UNKNOWN
     };
   }
 
