@@ -11,7 +11,7 @@ import {
 } from 'unleash-openfeature-nodejs-verifier';
 import { UnleashProvider } from '../src/index';
 
-// This provider evaluates locally and takes per-call context → both server capabilities.
+// evaluates both server capabilities.
 const capabilities: readonly Capability[] = ['localEval', 'perCallContext'];
 
 // TODO - run as EXPECTED failures 
@@ -28,6 +28,7 @@ describe('OpenFeature conformance (shared contract)', () => {
 
   beforeAll(async () => {
     fake = await startFakeUnleash();
+
     await OpenFeature.setProviderAndWait(
       new UnleashProvider({
         url: fake.url,
@@ -36,6 +37,7 @@ describe('OpenFeature conformance (shared contract)', () => {
         refreshInterval: 1000,
       }),
     );
+    
     client = OpenFeature.getClient();
   });
 
