@@ -112,11 +112,10 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
     expect(details.reason).toBe(StandardResolutionReasons.DISABLED);
   });
 
-  it('returns FLAG_NOT_FOUND for an unknown flag', async () => {
+  it('returns default for an unknown flag', async () => {
     const details = await client.getBooleanDetails('no-such-flag', true);
     expect(details.value).toBe(true);
-    expect(details.errorCode).toBe(ErrorCode.FLAG_NOT_FOUND);
-    expect(details.reason).toBe(StandardResolutionReasons.ERROR);
+    expect(details.reason).toBe(StandardResolutionReasons.UNKNOWN);
   });
 
   it('applies targeting via targetingKey', async () => {

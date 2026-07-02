@@ -1,12 +1,8 @@
-import { once } from 'node:events';
 import {
-  FlagNotFoundError,
   GeneralError,
   OpenFeatureEventEmitter,
   ProviderEvents,
-  ProviderFatalError,
   ProviderNotReadyError,
-  StandardResolutionReasons,
   type EvaluationContext,
   type JsonValue,
   type Logger,
@@ -114,20 +110,17 @@ export class UnleashProvider implements Provider {
     context: EvaluationContext,
     logger: Logger,
   ): ResolutionDetails<T> {
-    const client = this.requireClient(flagKey);
+    const client = this.requireClient();
     const variant = client.getVariant(flagKey, translateContext(context, logger));
     return resolveVariantValue(variant, expectedType, defaultValue);
   }
 
-  private requireClient(flagKey: string): Unleash {
+  private requireClient(): Unleash {
     if (!this.client) {
       throw new GeneralError('Unleash provider is not initialized');
     }
     if (!this.client.isSynchronized()) {
       throw new ProviderNotReadyError('Unleash provider has not yet synchronized flag data');
-    }
-    if (this.client.getFeatureToggleDefinition(flagKey) === undefined) {
-      throw new FlagNotFoundError(`Flag '${flagKey}' was not found in Unleash`);
     }
     return this.client;
   }
