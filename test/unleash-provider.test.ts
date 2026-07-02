@@ -319,23 +319,6 @@ describe('UnleashProvider — initialization edge cases', () => {
     await readyPromise;
   });
 
-  it('rejects with PROVIDER_FATAL on a fatal authentication error (401/403)', async () => {
-    const fakeClient = new FakeUnleash();
-    fakeClient.start = async () => {
-      // Exact message format emitted by the Unleash polling-fetcher on 401/403.
-      fakeClient.emit(
-        UnleashEvents.Error,
-        new Error(
-          'http://localhost:9/api responded 401 which means your API key is not allowed to connect. Stopping refresh of toggles',
-        ),
-      );
-      // isSynchronized() remains false — no data was fetched.
-    };
-
-    const provider = new TestableProvider(fakeClient);
-    await expect(provider.initialize()).rejects.toThrow(ProviderFatalError);
-  });
-
   it('rejects with PROVIDER_FATAL when initializationTimeoutMs is exceeded', async () => {
     // No bootstrap, refreshInterval 0 → fetch() is a no-op → never synchronizes.
     const provider = new UnleashProvider({

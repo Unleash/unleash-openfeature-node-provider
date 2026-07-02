@@ -21,8 +21,6 @@ export type UnleashProviderConfig = UnleashConfig & {
   initializationTimeoutMs?: number;
 };
 
-const FATAL_AUTH_PATTERN = /not allowed to connect/i;
-
 export class UnleashProvider implements Provider {
   readonly metadata = { name: 'unleash' } as const;
   readonly runsOn = 'server' as const;
@@ -32,7 +30,6 @@ export class UnleashProvider implements Provider {
   private client?: Unleash;
   private hasData = false;
   private degraded = false;
-  private fatalAuthError = false;
 
   constructor(config: UnleashProviderConfig) {
     this.config = config;
@@ -55,9 +52,6 @@ export class UnleashProvider implements Provider {
     await this.client.start();
 
     if (this.client.isSynchronized()) return;
-    if (this.fatalAuthError) {
-      throw new ProviderFatalError('Unleash authentication failed — check your API key');
-    }
 
     await this.awaitSynchronized(this.client);
   }
@@ -181,10 +175,6 @@ export class UnleashProvider implements Provider {
 
   private onUnleashError(error: unknown): void {
     const err = toError(error);
-    if (FATAL_AUTH_PATTERN.test(err.message)) {
-      this.fatalAuthError = true;
-      return;
-    }
     this.degraded = true;
     const message = err.message;
     if (this.hasData) {
