@@ -21,7 +21,7 @@ export type UnleashProviderConfig = UnleashConfig & {
 };
 
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash-node-provider' } as const;
+  readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
