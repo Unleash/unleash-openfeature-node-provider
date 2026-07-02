@@ -27,19 +27,8 @@ export class UnleashProvider implements Provider {
     this.config = config;
   }
 
-  set unleashClient(client: Unleash) {
-    this.client = client;
-  }
-
-  get unleashClient(): Unleash | undefined {
-    return this.client;
-  }
-
   async initialize(): Promise<void> {
-    if (!this.client) {
-        this.client = this.createUnleashClient();
-    }
-
+    this.client = this.createUnleashClient();
     this.setupListeners(this.client);
     await this.client.start();
   }

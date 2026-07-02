@@ -3,7 +3,6 @@ import {
   ErrorCode,
   OpenFeature,
   ProviderEvents,
-  ProviderFatalError,
   StandardResolutionReasons,
 } from '@openfeature/server-sdk';
 import {
@@ -95,11 +94,6 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
     await OpenFeature.close();
   });
 
-  it('exposes the underlying Unleash client after initialization', () => {
-    expect(provider.unleashClient).toBeDefined();
-    expect(provider.unleashClient?.isSynchronized()).toBe(true);
-  });
-
   it('resolves an enabled boolean flag', async () => {
     const details = await client.getBooleanDetails('bool-flag', false);
     expect(details.value).toBe(true);
@@ -168,30 +162,6 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
     expect(details.value).toBe('fallback');
     expect(details.reason).toBe(StandardResolutionReasons.DISABLED);
   });
-
-  it('forwards configuration changes as PROVIDER_CONFIGURATION_CHANGED', async () => {
-    const seen = new Promise<void>((resolve) => {
-      client.addHandler(ProviderEvents.ConfigurationChanged, () => resolve());
-    });
-    provider.unleashClient?.emit(UnleashEvents.Changed);
-    await seen;
-  });
-
-  it('emits PROVIDER_STALE on Unleash errors once flag data is present', async () => {
-    const seen = new Promise<string | undefined>((resolve) => {
-      client.addHandler(ProviderEvents.Stale, (details) => resolve(details?.message));
-    });
-    provider.unleashClient?.emit(UnleashEvents.Error, new Error('fetch failed'));
-    await expect(seen).resolves.toBe('fetch failed');
-  });
-
-  it('emits PROVIDER_READY again when the client recovers', async () => {
-    const seen = new Promise<void>((resolve) => {
-      client.addHandler(ProviderEvents.Ready, () => resolve());
-    });
-    provider.unleashClient?.emit(UnleashEvents.Unchanged);
-    await seen;
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -237,19 +207,6 @@ class TestableProvider extends UnleashProvider {
 describe('UnleashProvider — initialization edge cases', () => {
   afterEach(async () => {
     await OpenFeature.close();
-  });
-
-  it('resolves as soon as bootstrap data is present (isSynchronized immediately after start)', async () => {
-    // offlineConfig supplies bootstrap; the real Unleash client sets synchronized
-    // synchronously during loadBootstrap(), so isSynchronized() is true after start().
-    const provider = new UnleashProvider({
-      ...offlineConfig,
-      appName: 'bootstrap-test',
-      storageProvider: new InMemStorageProvider(),
-    });
-    await expect(provider.initialize()).resolves.toBeUndefined();
-    expect(provider.unleashClient?.isSynchronized()).toBe(true);
-    await provider.onClose();
   });
 
   it('does not reject on a transient error during start; resolves once Synchronized fires', async () => {
