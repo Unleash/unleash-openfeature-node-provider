@@ -14,7 +14,7 @@ import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash' } as const;
+  readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
