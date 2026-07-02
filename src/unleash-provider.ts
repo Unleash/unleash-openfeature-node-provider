@@ -17,21 +17,17 @@ import { Unleash, UnleashEvents, type UnleashConfig } from 'unleash-client';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
-export type UnleashProviderConfig = UnleashConfig & {
-  initializationTimeoutMs?: number;
-};
-
 export class UnleashProvider implements Provider {
   readonly metadata = { name: 'unleash' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
-  private readonly config: UnleashProviderConfig;
+  private readonly config: UnleashConfig;
   private client?: Unleash;
   private hasData = false;
   private degraded = false;
 
-  constructor(config: UnleashProviderConfig) {
+  constructor(config: UnleashConfig) {
     this.config = config;
   }
 
@@ -50,38 +46,6 @@ export class UnleashProvider implements Provider {
 
     this.setupListeners(this.client);
     await this.client.start();
-
-    if (this.client.isSynchronized()) return;
-
-    await this.awaitSynchronized(this.client);
-  }
-
-  private async awaitSynchronized(client: Unleash): Promise<void> {
-    const syncPromise = once(client, UnleashEvents.Synchronized);
-    const { initializationTimeoutMs } = this.config;
-
-    if (initializationTimeoutMs === undefined) {
-      await syncPromise;
-      return;
-    }
-
-    let handle!: ReturnType<typeof setTimeout>;
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      handle = setTimeout(
-        () =>
-          reject(
-            new ProviderFatalError(
-              `Unleash did not synchronize within ${initializationTimeoutMs}ms`,
-            ),
-          ),
-        initializationTimeoutMs,
-      );
-    });
-    try {
-      await Promise.race([syncPromise, timeoutPromise]);
-    } finally {
-      clearTimeout(handle);
-    }
   }
 
   setupListeners(client: Unleash): void {

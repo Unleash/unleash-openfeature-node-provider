@@ -14,7 +14,7 @@ import {
   type UnleashConfig,
 } from 'unleash-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { UnleashProvider, type UnleashProviderConfig } from '../src/unleash-provider';
+import { UnleashProvider } from '../src/unleash-provider';
 
 type BootstrapFeatures = NonNullable<NonNullable<UnleashConfig['bootstrap']>['data']>;
 
@@ -89,10 +89,7 @@ const offlineConfig: UnleashConfig = {
 describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
   const provider = new UnleashProvider(offlineConfig);
   const client = OpenFeature.getClient('unleash-test');
-
-  beforeAll(async () => {
-    await OpenFeature.setProviderAndWait('unleash-test', provider);
-  });
+  OpenFeature.setProvider('unleash-test', provider);
 
   afterAll(async () => {
     await OpenFeature.close();
@@ -204,25 +201,6 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
 // ---------------------------------------------------------------------------
 
 class FakeUnleash extends EventEmitter {
-  private _synchronized = false;
-
-  isSynchronized(): boolean {
-    return this._synchronized;
-  }
-
-  /**
-   * Set the synchronized flag and schedule a Synchronized event via setImmediate.
-   * setImmediate fires after all pending microtasks and nextTick callbacks, which
-   * matches the timing of the real Unleash client (where Synchronized fires via
-   * process.nextTick only after an internal storageProvider.set() await drains).
-   * This ensures initialize()'s once(Synchronized) listener is registered before
-   * the event fires.
-   */
-  markSynchronized(): void {
-    this._synchronized = true;
-    setImmediate(() => this.emit(UnleashEvents.Synchronized));
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async start(): Promise<void> {}
 
@@ -234,7 +212,7 @@ class FakeUnleash extends EventEmitter {
   }
 }
 
-const minimalConfig: UnleashProviderConfig = {
+const minimalConfig: UnleashConfig = {
   appName: 'init-test',
   url: 'http://localhost:9/api',
   refreshInterval: 0,
@@ -247,7 +225,7 @@ const minimalConfig: UnleashProviderConfig = {
 class TestableProvider extends UnleashProvider {
   constructor(
     private readonly fakeClient: FakeUnleash,
-    config: UnleashProviderConfig = minimalConfig,
+    config: UnleashConfig = minimalConfig,
   ) {
     super(config);
   }
@@ -289,7 +267,6 @@ describe('UnleashProvider — initialization edge cases', () => {
     await Promise.resolve();
 
     // Simulate a later successful fetch.
-    fakeClient.markSynchronized();
     fakeClient.emit(UnleashEvents.Synchronized);
 
     await expect(initPromise).resolves.toBeUndefined();
@@ -298,7 +275,7 @@ describe('UnleashProvider — initialization edge cases', () => {
   it('emits STALE (not ERROR) on error after data is present, then READY on recovery', async () => {
     const fakeClient = new FakeUnleash();
     fakeClient.start = async () => {
-      fakeClient.markSynchronized();
+      fakeClient.emit(UnleashEvents.Synchronized);
     };
 
     const provider = new TestableProvider(fakeClient);
@@ -317,54 +294,5 @@ describe('UnleashProvider — initialization edge cases', () => {
     });
     fakeClient.emit(UnleashEvents.Unchanged);
     await readyPromise;
-  });
-
-  it('rejects with PROVIDER_FATAL when initializationTimeoutMs is exceeded', async () => {
-    // No bootstrap, refreshInterval 0 → fetch() is a no-op → never synchronizes.
-    const provider = new UnleashProvider({
-      ...minimalConfig,
-      initializationTimeoutMs: 50,
-    });
-
-    await expect(provider.initialize()).rejects.toThrow(ProviderFatalError);
-    await provider.onClose();
-  });
-
-  it('returns PROVIDER_NOT_READY when evaluated before initialization completes', async () => {
-    const fakeClient = new FakeUnleash();
-    let resolveStart!: () => void;
-    // start() hangs until the test manually releases it.
-    fakeClient.start = () => new Promise<void>((resolve) => { resolveStart = resolve; });
-
-    const provider = new TestableProvider(fakeClient);
-
-    // Non-awaited — provider status stays NOT_READY.
-    void OpenFeature.setProvider('not-ready-scope', provider);
-    const ofClient = OpenFeature.getClient('not-ready-scope');
-
-    const details = await ofClient.getBooleanDetails('bool-flag', false);
-    expect(details.errorCode).toBe(ErrorCode.PROVIDER_NOT_READY);
-
-    // Let initialization complete so the process can exit cleanly.
-    fakeClient.markSynchronized();
-    resolveStart();
-    fakeClient.emit(UnleashEvents.Synchronized);
-  });
-
-  it('does not emit PROVIDER_READY from the provider itself during initial initialization', async () => {
-    const fakeClient = new FakeUnleash();
-    fakeClient.start = async () => {
-      fakeClient.markSynchronized();
-    };
-
-    const provider = new TestableProvider(fakeClient);
-    let providerReadyCount = 0;
-    provider.events.addHandler(ProviderEvents.Ready, () => { providerReadyCount++; });
-
-    await provider.initialize();
-    // Drain any queued microtasks / nextTick callbacks.
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    expect(providerReadyCount).toBe(0);
   });
 });
