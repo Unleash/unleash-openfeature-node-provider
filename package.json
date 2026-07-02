@@ -40,6 +40,7 @@
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:conformance": "vitest run test/openfeature-contract.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -52,6 +53,7 @@
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "unleash-client": "^6.0.0",
+    "unleash-openfeature-nodejs-verifier": "file:../unleash-openfeature-node-verifier",
     "vitest": "^3.0.0"
   }
 }
