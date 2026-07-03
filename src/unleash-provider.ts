@@ -15,7 +15,7 @@ import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash' } as const;
+  readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
@@ -28,19 +28,8 @@ export class UnleashProvider implements Provider {
     this.config = config;
   }
 
-  set unleashClient(client: Unleash) {
-    this.client = client;
-  }
-
-  get unleashClient(): Unleash | undefined {
-    return this.client;
-  }
-
   async initialize(): Promise<void> {
-    if (!this.client) {
-        this.client = this.createUnleashClient();
-    }
-
+    this.client = this.createUnleashClient();
     this.setupListeners(this.client);
     await this.client.start();
   }
