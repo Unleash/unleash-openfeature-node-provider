@@ -3,6 +3,7 @@ import {
   OpenFeatureEventEmitter,
   ProviderEvents,
   ProviderNotReadyError,
+  StandardResolutionReasons,
   type EvaluationContext,
   type JsonValue,
   type Logger,
@@ -65,14 +66,15 @@ export class UnleashProvider implements Provider {
 
   async resolveBooleanEvaluation(
     flagKey: string,
-    _defaultValue: boolean,
+    defaultValue: boolean,
     context: EvaluationContext,
     logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
-    const client = this.requireClient(flagKey);
-    const enabled = client.isEnabled(flagKey, translateContext(context, logger));
+    const client = this.requireClient();
+    const enabled = client.isEnabled(flagKey, translateContext(context, logger), () => defaultValue);
     return {
-      value: enabled
+      value: enabled,
+      reason: StandardResolutionReasons.UNKNOWN
     };
   }
 
@@ -142,10 +144,11 @@ export class UnleashProvider implements Provider {
   }
 
   private onUnleashSuccess(): void {
+    const hadData = this.hasData;
     this.hasData = true;
-    if (this.degraded) {
+    if (this.degraded || !hadData) {
       this.degraded = false;
-      this.events.emit(ProviderEvents.Ready, { message: 'Unleash client recovered' });
+      this.events.emit(ProviderEvents.Ready, { message: `Unleash client ${hadData ? 'recovered': 'ready'}` });
     }
   }
 }
