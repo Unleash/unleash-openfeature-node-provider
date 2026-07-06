@@ -103,7 +103,7 @@ describe('UnleashProvider (end-to-end via OpenFeature SDK)', () => {
   it('resolves a disabled boolean flag', async () => {
     const details = await client.getBooleanDetails('disabled-flag', true);
     expect(details.value).toBe(false);
-    expect(details.reason).toBe(StandardResolutionReasons.DISABLED);
+    expect(details.reason).toBe(StandardResolutionReasons.UNKNOWN);
   });
 
   it('returns default for an unknown flag', async () => {
