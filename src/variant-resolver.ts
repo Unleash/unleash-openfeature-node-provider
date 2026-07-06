@@ -1,9 +1,9 @@
 import {
+  type FlagMetadata,
   ParseError,
+  type ResolutionDetails,
   StandardResolutionReasons,
   TypeMismatchError,
-  type FlagMetadata,
-  type ResolutionDetails,
 } from '@openfeature/server-sdk';
 import { PayloadType, type Variant } from 'unleash-client';
 
@@ -28,7 +28,7 @@ export function resolveVariantValue<T>(
 ): ResolutionDetails<T> {
   const flagMetadata: FlagMetadata = {};
   if (variant.feature_enabled !== undefined) {
-    flagMetadata['featureEnabled'] = variant.feature_enabled;
+    flagMetadata.featureEnabled = variant.feature_enabled;
   }
 
   if (variant.feature_enabled === false) {
@@ -40,7 +40,7 @@ export function resolveVariantValue<T>(
   }
 
   const { payload } = variant;
-  flagMetadata['payloadType'] = payload.type;
+  flagMetadata.payloadType = payload.type;
 
   return {
     value: parsePayload(variant.name, payload.type, payload.value, expectedType) as T,
@@ -88,7 +88,11 @@ function parsePayload(
   }
 }
 
-function mismatch(variantName: string, payloadType: PayloadType, expectedType: VariantValueType): TypeMismatchError {
+function mismatch(
+  variantName: string,
+  payloadType: PayloadType,
+  expectedType: VariantValueType,
+): TypeMismatchError {
   return new TypeMismatchError(
     `Payload of variant '${variantName}' has type '${payloadType}', which cannot be resolved as '${expectedType}'`,
   );
