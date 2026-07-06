@@ -1,16 +1,16 @@
 import {
-  GeneralError,
-  OpenFeatureEventEmitter,
-  ProviderEvents,
-  ProviderNotReadyError,
-  StandardResolutionReasons,
   type EvaluationContext,
+  GeneralError,
   type JsonValue,
   type Logger,
+  OpenFeatureEventEmitter,
   type Provider,
+  ProviderEvents,
+  ProviderNotReadyError,
   type ResolutionDetails,
+  StandardResolutionReasons,
 } from '@openfeature/server-sdk';
-import { Unleash, UnleashEvents, type UnleashConfig } from 'unleash-client';
+import { Unleash, type UnleashConfig, UnleashEvents } from 'unleash-client';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
@@ -40,7 +40,9 @@ export class UnleashProvider implements Provider {
     client.on(UnleashEvents.Unchanged, () => this.onUnleashSuccess());
     client.on(UnleashEvents.Changed, () => {
       this.onUnleashSuccess();
-      this.events.emit(ProviderEvents.ConfigurationChanged, { message: 'Flag configuration changed' });
+      this.events.emit(ProviderEvents.ConfigurationChanged, {
+        message: 'Flag configuration changed',
+      });
     });
   }
 
@@ -60,10 +62,14 @@ export class UnleashProvider implements Provider {
     logger: Logger,
   ): Promise<ResolutionDetails<boolean>> {
     const client = this.requireClient();
-    const enabled = client.isEnabled(flagKey, translateContext(context, logger), () => defaultValue);
+    const enabled = client.isEnabled(
+      flagKey,
+      translateContext(context, logger),
+      () => defaultValue,
+    );
     return {
       value: enabled,
-      reason: StandardResolutionReasons.UNKNOWN
+      reason: StandardResolutionReasons.UNKNOWN,
     };
   }
 
@@ -137,7 +143,9 @@ export class UnleashProvider implements Provider {
     this.hasData = true;
     if (this.degraded || !hadData) {
       this.degraded = false;
-      this.events.emit(ProviderEvents.Ready, { message: `Unleash client ${hadData ? 'recovered': 'ready'}` });
+      this.events.emit(ProviderEvents.Ready, {
+        message: `Unleash client ${hadData ? 'recovered' : 'ready'}`,
+      });
     }
   }
 }

@@ -38,6 +38,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:conformance": "vitest run test/openfeature-contract.test.ts",
@@ -48,6 +50,7 @@
     "unleash-client": "^6.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.11",
     "@openfeature/server-sdk": "^1.19.0",
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
