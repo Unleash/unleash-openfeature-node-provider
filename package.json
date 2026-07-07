@@ -58,7 +58,6 @@
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "unleash-client": "^6.0.0",
-    "vitest": "^3.0.0",
-    "unleash-openfeature-nodejs-verifier": "file:../unleash-openfeature-node-verifier"
+    "vitest": "^3.0.0"
   }
 }
