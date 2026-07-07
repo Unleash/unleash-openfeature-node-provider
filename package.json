@@ -1,6 +1,6 @@
 {
   "name": "@unleash/openfeature-node-provider",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "OpenFeature provider for the Unleash Node.js server-side SDK",
   "license": "Apache-2.0",
   "repository": {
