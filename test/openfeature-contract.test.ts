@@ -14,7 +14,7 @@ import { UnleashProvider } from '../src/index';
 // evaluates both server capabilities.
 const capabilities: readonly Capability[] = ['localEval', 'perCallContext'];
 
-// TODO - run as EXPECTED failures 
+// TODO - run as EXPECTED failures
 const knownGaps: Record<string, string> = {
   'bool-missing-flag':
     'Emits FLAG_NOT_FOUND for a missing flag; spec says missing → default with no error.',
@@ -37,7 +37,7 @@ describe('OpenFeature conformance (shared contract)', () => {
         refreshInterval: 1000,
       }),
     );
-    
+
     client = OpenFeature.getClient();
   });
 

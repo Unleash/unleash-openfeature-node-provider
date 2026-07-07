@@ -34,9 +34,9 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "packageManager": "pnpm@11.10.0+sha512.0b7f8b98060031904c017e3a41eb187a16d40eeb829b95c4f8cb03681761fc4ab53dd219115b9b447f4dce1a05a214764461e7d3703392a9f32f9511ce8c86c8",
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",
     "lint": "biome check .",
@@ -51,14 +51,14 @@
     "unleash-client": "^6.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.11",
+    "@biomejs/biome": "2.5.2",
     "@openfeature/core": "^1.11.0",
     "@openfeature/server-sdk": "^1.19.0",
-    "@types/node": "^20.0.0",
+    "@types/node": "^22.20.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.5.0",
+    "typescript": "^5.9.3",
     "unleash-client": "^6.0.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.10"
   },
   "publishConfig": {
     "access": "public",
