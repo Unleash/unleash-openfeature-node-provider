@@ -5,7 +5,7 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       'verifier/**', // the spec submodule ships its own tests — never run them here
-      'test/openfeature-contract.test.ts',
+      'test/verifier-contract.test.ts',
     ],
   },
 });

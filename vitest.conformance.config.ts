@@ -5,6 +5,6 @@ import { defineConfig } from 'vitest/config';
 // stays green without the submodule checked out.
 export default defineConfig({
   test: {
-    include: ['test/openfeature-contract.test.ts'],
+    include: ['test/verifier-contract.test.ts'],
   },
 });
