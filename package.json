@@ -43,7 +43,7 @@
     "lint:fix": "biome check --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:conformance": "vitest run test/openfeature-contract.test.ts",
+    "test:conformance": "vitest run --config vitest.conformance.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
