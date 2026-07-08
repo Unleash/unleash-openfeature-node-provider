@@ -23,6 +23,18 @@ context, so Unleash usage metrics keep working as usual.
 npm install @unleash/openfeature-node-provider @openfeature/server-sdk unleash-client
 ```
 
+If you cloned without submodules, initialize the verifier harness:
+
+```bash
+git submodule update --init --recursive
+```
+
+The contract tests use the `verifier` submodule. To refresh it:
+
+```bash
+git submodule update --remote --merge verifier
+```
+
 ## Usage
 
 ```ts
