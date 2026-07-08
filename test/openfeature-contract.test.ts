@@ -1,34 +1,104 @@
-import { type Client, OpenFeature } from '@openfeature/server-sdk';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import http from 'node:http';
 import {
-  appliesTo,
-  type Capability,
-  evaluate,
-  type FakeUnleash,
-  type Scenario,
-  scenarios,
-  startFakeUnleash,
-} from 'unleash-openfeature-nodejs-verifier';
+  type Client,
+  type EvaluationDetails,
+  type JsonValue,
+  OpenFeature,
+} from '@openfeature/server-sdk';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { UnleashProvider } from '../src/index';
 
-// evaluates both server capabilities.
-const capabilities: readonly Capability[] = ['localEval', 'perCallContext'];
+/**
+ * OpenFeature conformance, driven by the shared, language-neutral specification.
+ *
+ * The spec is pinned as the `verifier` git submodule and read as plain JSON — the same way the
+ * Python, Ruby, and Rust providers consume it (and the same way every Unleash SDK consumes
+ * `client-specification`). No npm dependency, no published package. Bump the submodule to change
+ * the contract; this file only wires our provider and loops.
+ *
+ *   git submodule add <verifier-repo-url> verifier      # ships spec/ under verifier/spec
+ *   git submodule update --init                       # CI must run this before conformance
+ */
+const readSpec = (p: string) => JSON.parse(readFileSync(new URL(`../verifier/spec/${p}`, import.meta.url), 'utf8'));
+const contract = readSpec('contract.json');
+const clientFeatures = readSpec('fixtures/unleash-features.json');
 
-// TODO - run as EXPECTED failures
+// This provider evaluates locally and takes per-call context — both server capabilities.
+const capabilities = ['localEval', 'perCallContext'];
+const evaluatesLocally = capabilities.includes('localEval');
+const appliesTo = (s: Scenario) => (s.requires ?? []).every((c) => capabilities.includes(c));
+
+// Divergences from the contract, run as EXPECTED failures — green while tracked, red once fixed
+// (delete the entry when it goes red).
 const knownGaps: Record<string, string> = {
-  'bool-missing-flag':
-    'Emits FLAG_NOT_FOUND for a missing flag; spec says missing → default with no error.',
-  'number-empty-string-guard':
-    'Returns 0 for an empty NUMBER payload (Number("") === 0); should be default + PARSE_ERROR.',
+  'number-empty-string-guard': 'Returns 0 for an empty NUMBER payload (Number("") === 0); should be default + PARSE_ERROR.',
 };
 
-describe('OpenFeature conformance (shared contract)', () => {
+interface Scenario {
+  id: string;
+  description: string;
+  flagKey: string;
+  type: 'boolean' | 'string' | 'number' | 'object';
+  default: unknown;
+  context?: Record<string, unknown>;
+  requires?: string[];
+  expect: { value: unknown; variant?: string; errorCode?: string };
+}
+
+/**
+ * A fake Unleash Client API: serves the fixture over loopback so the provider runs its real
+ * fetch/parse/evaluate path with no server, no token, no network.
+ */
+async function startFakeUnleash() {
+  const server = http.createServer((req, res) => {
+    req.on('data', () => {});
+    req.on('end', () => {
+      const { method = 'GET', url = '' } = req;
+      if (method === 'GET' && url.startsWith('/api/client/features')) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(clientFeatures));
+        return;
+      }
+      if (method === 'POST' && (url.startsWith('/api/client/register') || url.startsWith('/api/client/metrics'))) {
+        res.writeHead(202);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  const addr = server.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  return {
+    url: `http://127.0.0.1:${port}/api`,
+    token: 'conformance-not-a-real-token',
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}
+
+function evaluate(client: Client, s: Scenario): Promise<EvaluationDetails<JsonValue>> {
+  const ctx = s.context ?? {};
+  switch (s.type) {
+    case 'boolean':
+      return client.getBooleanDetails(s.flagKey, s.default as boolean, ctx) as Promise<EvaluationDetails<JsonValue>>;
+    case 'string':
+      return client.getStringDetails(s.flagKey, s.default as string, ctx) as Promise<EvaluationDetails<JsonValue>>;
+    case 'number':
+      return client.getNumberDetails(s.flagKey, s.default as number, ctx) as Promise<EvaluationDetails<JsonValue>>;
+    case 'object':
+      return client.getObjectDetails(s.flagKey, s.default as JsonValue, ctx);
+  }
+}
+
+describe(`OpenFeature conformance · spec v${contract.specificationVersion}`, () => {
   let client: Client;
-  let fake: FakeUnleash;
+  let fake: Awaited<ReturnType<typeof startFakeUnleash>>;
 
   beforeAll(async () => {
     fake = await startFakeUnleash();
-
     await OpenFeature.setProviderAndWait(
       new UnleashProvider({
         url: fake.url,
@@ -37,7 +107,6 @@ describe('OpenFeature conformance (shared contract)', () => {
         refreshInterval: 1000,
       }),
     );
-
     client = OpenFeature.getClient();
   });
 
@@ -46,21 +115,18 @@ describe('OpenFeature conformance (shared contract)', () => {
     await fake.close();
   });
 
-  const applicable = (scenarios as readonly Scenario[]).filter((s) => appliesTo(s, capabilities));
-  const evaluatesLocally = capabilities.includes('localEval');
-
-  for (const s of applicable) {
+  for (const s of (contract.scenarios as Scenario[]).filter(appliesTo)) {
     const gap = knownGaps[s.id];
     const runner = gap ? it.fails : it;
 
     runner(`${s.id} — ${s.description}${gap ? ' [KNOWN GAP]' : ''}`, async () => {
       const d = await evaluate(client, s);
 
-      // the end result the app receives.
+      // Tier 1 — the end result the app receives.
       expect(d.value).toEqual(s.expect.value);
       if (s.expect.variant) expect(d.variant).toBe(s.expect.variant);
 
-      // error semantics (this provider evaluates locally, so it owns them).
+      // Tier 2 — error semantics (this provider evaluates locally, so it owns them).
       if (evaluatesLocally) {
         if (s.expect.errorCode) expect(d.errorCode).toBe(s.expect.errorCode);
         else expect(d.errorCode).toBeUndefined();
