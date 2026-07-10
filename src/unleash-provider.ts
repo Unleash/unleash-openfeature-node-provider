@@ -25,7 +25,14 @@ export class UnleashProvider implements Provider {
   private degraded = false;
 
   constructor(config: UnleashConfig) {
-    this.config = config;
+    this.config = {
+        ...config,
+        customHeaders: {
+            ...config.customHeaders,
+            "sdk-flavor": "unleash-openfeature-node-provider",
+            "sdk-flavor-version": "0.1.0",
+        },
+    };
   }
 
   async initialize(): Promise<void> {
