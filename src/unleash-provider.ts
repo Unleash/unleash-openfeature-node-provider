@@ -14,6 +14,11 @@ import { Unleash, type UnleashConfig, UnleashEvents } from 'unleash-client';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
+type UnleashProviderConfig = UnleashConfig & {
+  sdkFlavor?: string;
+  sdkFlavorVersion?: string;
+};
+
 export class UnleashProvider implements Provider {
   readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
   readonly runsOn = 'server' as const;
