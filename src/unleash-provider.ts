@@ -19,8 +19,10 @@ type UnleashProviderConfig = UnleashConfig & {
   sdkFlavorVersion?: string;
 };
 
+const SDK_FLAVOR = 'unleash-openfeature-node-provider';
+
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
+  readonly metadata = { name: SDK_FLAVOR } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
