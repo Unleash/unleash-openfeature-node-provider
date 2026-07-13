@@ -11,6 +11,7 @@ import {
   StandardResolutionReasons,
 } from '@openfeature/server-sdk';
 import { Unleash, type UnleashConfig, UnleashEvents } from 'unleash-client';
+import { version as PROVIDER_VERSION } from '../package.json';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
@@ -33,12 +34,9 @@ export class UnleashProvider implements Provider {
 
   constructor(config: UnleashConfig) {
     this.config = {
-        ...config,
-        customHeaders: {
-            ...config.customHeaders,
-            "sdk-flavor": "unleash-openfeature-node-provider",
-            "sdk-flavor-version": "0.1.0",
-        },
+      sdkFlavor: SDK_FLAVOR,
+      sdkFlavorVersion: PROVIDER_VERSION,
+      ...config,
     };
   }
 
