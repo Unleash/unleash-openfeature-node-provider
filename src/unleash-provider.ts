@@ -26,7 +26,7 @@ export class UnleashProvider implements Provider {
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
-  private readonly config: UnleashConfig;
+  private readonly config: UnleashProviderConfig;
   private client?: Unleash;
   private hasData = false;
   private degraded = false;
