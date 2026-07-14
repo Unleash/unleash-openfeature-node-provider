@@ -32,7 +32,7 @@ export class UnleashProvider implements Provider {
   private hasData = false;
   private degraded = false;
 
-  constructor(config: UnleashConfig) {
+  constructor(config: UnleashProviderConfig) {
     this.config = {
       sdkFlavor: SDK_FLAVOR,
       sdkFlavorVersion: PROVIDER_VERSION,
