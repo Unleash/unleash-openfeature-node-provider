@@ -20,7 +20,7 @@ context, so Unleash usage metrics keep working as usual.
 ## Installation
 
 ```sh
-npm install @unleash/openfeature-node-provider @openfeature/server-sdk unleash-client
+pnpm install @unleash/openfeature-node-provider @openfeature/server-sdk unleash-client
 ```
 
 If you cloned without submodules, initialize the verifier harness:
@@ -135,9 +135,9 @@ are unaffected — they are handled by the underlying SDK.
 ## Development
 
 ```sh
-npm install
-npm test        # vitest: unit + offline integration tests (bootstrap data, no server)
-npm run build   # tsup: ESM + CJS + type declarations
+pnpm install
+pnpm test        # vitest: unit + offline integration tests (bootstrap data, no server)
+pnpm run build   # tsup: ESM + CJS + type declarations
 ```
 
 ## License
