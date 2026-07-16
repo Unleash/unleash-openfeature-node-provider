@@ -11,21 +11,33 @@ import {
   StandardResolutionReasons,
 } from '@openfeature/server-sdk';
 import { Unleash, type UnleashConfig, UnleashEvents } from 'unleash-client';
+import { version as PROVIDER_VERSION } from '../package.json';
 import { translateContext } from './context-translator';
 import { resolveVariantValue, type VariantValueType } from './variant-resolver';
 
+type UnleashProviderConfig = UnleashConfig & {
+  sdkFlavor?: string;
+  sdkFlavorVersion?: string;
+};
+
+const SDK_FLAVOR = 'unleash-openfeature-node-provider';
+
 export class UnleashProvider implements Provider {
-  readonly metadata = { name: 'unleash-openfeature-node-provider' } as const;
+  readonly metadata = { name: SDK_FLAVOR } as const;
   readonly runsOn = 'server' as const;
   readonly events = new OpenFeatureEventEmitter();
 
-  private readonly config: UnleashConfig;
+  private readonly config: UnleashProviderConfig;
   private client?: Unleash;
   private hasData = false;
   private degraded = false;
 
-  constructor(config: UnleashConfig) {
-    this.config = config;
+  constructor(config: UnleashProviderConfig) {
+    this.config = {
+      sdkFlavor: SDK_FLAVOR,
+      sdkFlavorVersion: PROVIDER_VERSION,
+      ...config,
+    };
   }
 
   async initialize(): Promise<void> {
