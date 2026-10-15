@@ -61,8 +61,6 @@ const variantText = await client.getStringValue('my-copy-experiment', 'default t
 });
 ```
 
-The underlying Unleash client is available as an escape hatch via `provider.unleashClient`.
-
 ## Concept mapping
 
 ### Flag evaluation
